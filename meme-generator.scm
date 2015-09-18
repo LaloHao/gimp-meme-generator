@@ -26,40 +26,44 @@
   (aref (gimp-image-list-items) 0))
 
 (define (gimp-layer-hide-all from-image)
-  (let ((layers (vector->list (cadr (gimp-image-get-layers from-image)))))
-    (map (lambda (layer) (gimp-layer-set-visible layer 0)) layers)))
+  (let ((hide-layer (lambda (layer) (gimp-layer-set-visible layer 0)))
+      (layers (vector->list (cadr (gimp-image-get-layers from-image)))))
+    (map hide-layer layers)))
 
 (define (gimp-layer-unhide-all from-image)
   (let ((layers (vector->list (cadr (gimp-image-get-layers from-image)))))
     (map (lambda (layer) (gimp-layer-set-visible layer 1)) layers)))
 
+(define (with-undo-disabled in-image do-this)
+  (gimp-image-undo-disable in-image)
+  `(map (lambda (x) (x)) ,@do-this)
+  (gimp-image-undo-enable in-image))
+
 (define (script-fu-meme-generator img text size)
   (gimp-layer-hide-all img)
   (let* ((font "Impact Condensed")
-         (logo-layer (car (gimp-text-fontname img -1 0 0 text 10 TRUE size PIXELS font)))
-         (width (car (gimp-drawable-width logo-layer)))
-         (height (car (gimp-drawable-height logo-layer)))
-         (outline-layer (car (gimp-layer-new img width height RGBA-IMAGE text 100 NORMAL-MODE))))
+      (logo-layer (car (gimp-text-fontname img -1 0 0 text 10 TRUE size PIXELS font)))
+      (width (car (gimp-drawable-width logo-layer)))
+      (height (car (gimp-drawable-height logo-layer)))
+      (outline-layer (car (gimp-layer-new img width height RGBA-IMAGE text 100 NORMAL-MODE))))
 
-    (gimp-image-undo-disable img)
+    (with-undo-disabled
+     img
+     (gimp-selection-none img)
+     (script-fu-util-image-add-layers img outline-layer)
 
-    (gimp-selection-none img)
-    (script-fu-util-image-add-layers img outline-layer)
+     (gimp-context-set-foreground "white")
+     (gimp-layer-set-lock-alpha logo-layer TRUE)
+     (gimp-edit-fill logo-layer FOREGROUND-FILL)
 
-    (gimp-context-set-foreground "white")
-    (gimp-layer-set-lock-alpha logo-layer TRUE)
-    (gimp-edit-fill logo-layer FOREGROUND-FILL)
+     (gimp-edit-clear outline-layer)
+     (gimp-image-select-item img CHANNEL-OP-REPLACE logo-layer)
+     (gimp-selection-grow img (/ size 10))
+     (gimp-context-set-background "black")
+     (gimp-edit-fill outline-layer BACKGROUND-FILL)
 
-    (gimp-edit-clear outline-layer)
-    (gimp-image-select-item img CHANNEL-OP-REPLACE logo-layer)
-    (gimp-selection-grow img (/ size 10))
-    (gimp-context-set-background "black")
-    (gimp-edit-fill outline-layer BACKGROUND-FILL)
-
-    (gimp-image-merge-visible-layers img 1)
-    (gimp-layer-unhide-all img)
-
-    (gimp-image-undo-enable img)
+     (gimp-image-merge-visible-layers img 1)
+     (gimp-layer-unhide-all img))
     (gimp-displays-flush)))
 
 ;; Debug
